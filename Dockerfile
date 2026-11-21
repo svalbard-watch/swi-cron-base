@@ -12,6 +12,12 @@ FROM python:${PYTHON_VERSION}-slim
 ARG APP_UID=9001
 ARG APP_GID=9001
 
+# Pick up Debian security fixes newer than the python base image (for example a zlib1g fix
+# that is in the archive before the python:slim tag is rebuilt). Job images inherit this.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 # The jobs never install packages at runtime: remove pip (and its vendored copies of
 # urllib3, msgpack, ...) so they are neither exposed nor flagged by image scanners. A job
 # image installs its dependencies in a separate builder stage and copies them in.
