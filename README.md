@@ -12,7 +12,8 @@ Schedule re-runs it with `docker exec <container> /swi/run-cron.sh` (`run-cron` 
 `PATH`). Without `DOCKER_CRON` the container runs the job once and exits with its exit code.
 
 `run-cron` takes a `flock` so only one run is active. A start while a run is still active does
-**not** start a second job: it records an overlap and exits 0. The image `HEALTHCHECK`
+**not** start a second job: it records an overlap and exits 75 in strict mode (so the
+scheduler's log shows the skipped start) or 0 when `SWI_CRON_MAX_SECONDS > 0`. The image `HEALTHCHECK`
 (`healthcheck.sh`) then decides:
 
 | `SWI_CRON_MAX_SECONDS` | Unhealthy when |

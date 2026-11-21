@@ -13,7 +13,9 @@
 #   SWI_CRON_STATE_DIR     where run state is kept (default /tmp/swi-cron)
 #
 # A second start while a run is active does not start a second job: it records the overlap
-# and exits 0. healthcheck.sh turns that into an unhealthy container when it matters.
+# and exits 75 in strict mode (SWI_CRON_MAX_SECONDS 0 or unset, where the overlap also turns the
+# container unhealthy, see healthcheck.sh) or 0 when SWI_CRON_MAX_SECONDS > 0, so the scheduler's
+# log shows the skipped start only when it is a problem.
 #
 # State files (all epoch seconds unless noted): lock (flock), run.start, overlap,
 # last_end, last_success, last_exit (exit code).
@@ -43,7 +45,10 @@ if ! flock -n 9; then
     else
         log "previous run still active; skipping this start"
     fi
-    exit 0
+    case "${SWI_CRON_MAX_SECONDS:-0}" in
+        '' | 0 | *[!0-9]*) exit 75 ;;
+        *) exit 0 ;;
+    esac
 fi
 
 # Remove only our own run marker: a wrapper that is killed must not leave a stale one.

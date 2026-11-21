@@ -79,7 +79,7 @@ $RUN >/dev/null &
 first=$!
 wait_for run.start
 out="$($RUN)"
-check "a second start exits 0" test $? -eq 0
+check "a second start exits 75" test $? -eq 75
 check "a second start is skipped" grep -q skipping <<<"$out"
 check "the overlap is recorded" exists overlap
 check "the container is unhealthy" unhealthy
@@ -96,6 +96,7 @@ $RUN >/dev/null &
 first=$!
 wait_for run.start
 $RUN >/dev/null
+check "a second start exits 0" test $? -eq 0
 check "the overlap is recorded" exists overlap
 check "a run within the limit stays healthy" healthy
 wait "$first"
