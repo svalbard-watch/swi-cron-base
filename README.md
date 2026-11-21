@@ -48,6 +48,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*          # only if the job needs system packages
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+# The builder's site-packages brings pip back (with its vendored urllib3, msgpack, certifi, ...):
+# remove it again, or image scanners flag those copies.
+RUN python -m pip uninstall -y pip setuptools wheel 2>/dev/null || true
 COPY . /swi
 RUN mkdir -p /swi/data && chown swi:swi /swi/data   # mount points for shared volumes
 ENV SWI_CRON_COMMAND="python /swi/main.py"
