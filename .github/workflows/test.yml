@@ -1,0 +1,41 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Shellcheck
+        run: shellcheck scripts/run-cron scripts/healthcheck.sh scripts/entrypoint.sh tests/run-tests.sh
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in step with the Python versions the cron job images use, and with the
+        # matrix in release-please.yml.
+        python: ["3.13", "3.14"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        run: docker build --build-arg PYTHON_VERSION=${{ matrix.python }} -t swi-cron-base:test .
+
+      - name: Run the behaviour tests inside the image
+        run: docker run --rm --entrypoint bash -v "$PWD/tests:/tests:ro" swi-cron-base:test /tests/run-tests.sh
