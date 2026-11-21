@@ -1,0 +1,84 @@
+#!/bin/bash
+# Run the cron job once, guarded against overlapping runs.
+#
+# Meant to be started by an external scheduler (a Dokploy Schedule running
+# `docker exec <container> run-cron`) or once by entrypoint.sh. Configuration (env):
+#
+#   SWI_CRON_COMMAND       the job, run with `bash -c` (required)
+#   SWI_CRON_PRE_COMMAND   optional step run before the job; the run is aborted when it fails
+#   SWI_CRON_MAX_SECONDS   longest acceptable run, see healthcheck.sh (0 = strict, default)
+#   SWI_CRON_KILL_SECONDS  optional hard limit: the job is terminated after this long (0 = off).
+#                          Setting it at or below SWI_CRON_MAX_SECONDS means a hung job is
+#                          killed before the container can turn unhealthy.
+#   SWI_CRON_STATE_DIR     where run state is kept (default /tmp/swi-cron)
+#
+# A second start while a run is active does not start a second job: it records the overlap
+# and exits 0. healthcheck.sh turns that into an unhealthy container when it matters.
+#
+# State files (all epoch seconds unless noted): lock (flock), run.start, overlap,
+# last_end, last_success, last_exit (exit code).
+
+set -u
+
+STATE_DIR="${SWI_CRON_STATE_DIR:-/tmp/swi-cron}"
+KILL_SECONDS="${SWI_CRON_KILL_SECONDS:-0}"
+
+log() { echo "[swi-cron] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
+
+if [ -z "${SWI_CRON_COMMAND:-}" ]; then
+    log "SWI_CRON_COMMAND is not set" >&2
+    exit 2
+fi
+
+mkdir -p "$STATE_DIR"
+
+# One run at a time. The lock is a flock on fd 9, so it is released by the kernel when the
+# last process holding it exits, whatever way it dies.
+exec 9>"$STATE_DIR/lock"
+if ! flock -n 9; then
+    date +%s >"$STATE_DIR/overlap"
+    started="$(cat "$STATE_DIR/run.start" 2>/dev/null || true)"
+    if [ -n "$started" ]; then
+        log "previous run still active (running for $(($(date +%s) - started))s); skipping this start"
+    else
+        log "previous run still active; skipping this start"
+    fi
+    exit 0
+fi
+
+# Remove only our own run marker: a wrapper that is killed must not leave a stale one.
+trap 'rm -f "$STATE_DIR/run.start"' EXIT
+
+rm -f "$STATE_DIR/overlap"
+begin="$(date +%s)"
+echo "$begin" >"$STATE_DIR/run.start"
+log "run started"
+
+rc=0
+if [ -n "${SWI_CRON_PRE_COMMAND:-}" ]; then
+    bash -c "$SWI_CRON_PRE_COMMAND"
+    rc=$?
+    [ "$rc" -eq 0 ] || log "pre-command failed with exit code $rc; the job is not started"
+fi
+
+if [ "$rc" -eq 0 ]; then
+    if [ "$KILL_SECONDS" -gt 0 ] 2>/dev/null; then
+        timeout --kill-after=30 "$KILL_SECONDS" bash -c "$SWI_CRON_COMMAND"
+        rc=$?
+        [ "$rc" -ne 124 ] || log "job exceeded SWI_CRON_KILL_SECONDS=$KILL_SECONDS and was terminated"
+    else
+        bash -c "$SWI_CRON_COMMAND"
+        rc=$?
+    fi
+fi
+
+end="$(date +%s)"
+echo "$end" >"$STATE_DIR/last_end"
+echo "$rc" >"$STATE_DIR/last_exit"
+if [ "$rc" -eq 0 ]; then
+    echo "$end" >"$STATE_DIR/last_success"
+fi
+# A run that overlapped with this one has been handled by now.
+rm -f "$STATE_DIR/run.start" "$STATE_DIR/overlap"
+log "run finished with exit code $rc after $((end - begin))s"
+exit "$rc"
