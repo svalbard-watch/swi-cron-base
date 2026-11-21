@@ -42,7 +42,7 @@ replaces the task, which ends the job. The new container runs the job once on st
 # Dependencies are installed in a builder stage (the base has no pip), then copied in.
 FROM python:3.13-slim AS builder
 ...
-FROM ghcr.io/svalbard-watch/swi-cron-base:0.1.0-py3.13
+FROM ghcr.io/svalbard-watch/swi-cron-base:1.0.0-py3.13
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*          # only if the job needs system packages
@@ -60,7 +60,7 @@ the job image needs no `entrypoint.sh` or `run-cron.sh` of its own. It must end 
 ## Tags
 
 One image per Python version, because a job copies the packages it installed for that version:
-`<version>-py<python>` (for example `0.1.0-py3.13`), plus `<major>.<minor>-py<python>`,
+`<version>-py<python>` (for example `1.0.0-py3.13`), plus `<major>.<minor>-py<python>`,
 `<major>-py<python>` and `py<python>`. Dependabot (docker ecosystem) in each job repo bumps the
 `FROM` line when a new base version is released.
 
